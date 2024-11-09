@@ -272,13 +272,11 @@ def main():
     all_patients = list(range(num_patients))
     preference_lists_initial = {pid: preferences_dict[pid] for pid in all_patients}
 
-    new_matches_initial = hungarian_matching(
-            preference_lists_initial,
-            num_doctors,
-            doctor_capacity,
-            matching_dict_initial,
-            all_patients
-    )
+    for doctor_idx in range(num_doctors):
+        for patient_dix in range(num_patients):
+            matching_dict_initial[patient_idx] = patient_idx // doctor_capacity
+
+    new_matches_initial = matching_dict_initial
 
     # Update matching dictionary with new matches
     matching_dict_initial.update(new_matches_initial)
