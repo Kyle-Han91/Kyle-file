@@ -3,6 +3,7 @@ from scipy.optimize import linear_sum_assignment
 import copy
 import matplotlib.pyplot as plt
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 np.random.seed(1)
 
@@ -157,6 +158,7 @@ def run_ttc(current_panels, waitlists):
 
     return current_panels, waitlists
 
+
 # Hungarian algorithm function
 def hungarian_matching(preference_lists, num_doctors, doctor_capacity, matching_dict, patients_to_match):
     num_patients_to_match = len(patients_to_match)
@@ -187,10 +189,19 @@ def hungarian_matching(preference_lists, num_doctors, doctor_capacity, matching_
 
     # Create cost matrix
     cost_matrix = np.full((num_patients_to_match, num_slots), fill_value=1e6)
-    for i, pid in enumerate(patients_to_match):
+
+    def fill_cost_row(i, pid):
+        row_costs = np.full(num_slots, 1e6)
         pref = preference_lists[pid]
         for j, doctor in enumerate(doctor_slots):
-            cost_matrix[i, j] = -pref[doctor]
+            row_costs[j] = -pref[doctor]
+        return i, row_costs
+
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(fill_cost_row, i, pid) for i, pid in enumerate(patients_to_match)]
+        for future in futures:
+            i, row_costs = future.result()
+            cost_matrix[i] = row_costs
 
     # Apply Hungarian algorithm
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
@@ -207,11 +218,14 @@ def hungarian_matching(preference_lists, num_doctors, doctor_capacity, matching_
 
 # Compute total utility function
 def compute_total_utility(preferences_dict, matching_dict):
-    total_utility = 0
-    for patient_idx, doctor_id in matching_dict.items():
-        if doctor_id is not None and doctor_id != -1:
-            total_utility += preferences_dict[patient_idx][doctor_id]
+    matching_array = np.full(len(preferences_dict), -1, dtype=int)
+    for pid, doc in matching_dict.items():
+        if doc is not None:
+            matching_array[pid] = doc
+
+    total_utility = np.sum([preferences_dict[pid][doc] for pid, doc in enumerate(matching_array) if doc != -1])
     return total_utility
+
 
 # Plot utility function
 def plot_utilities(utility_hungarian, utility_ttc, utility_no_matching, num_rounds):
@@ -243,10 +257,10 @@ def plot_execution_times(time_hungarian, time_ttc, num_rounds,total_simulation_t
     plt.show()
 
 def main():
-    num_doctors = 100         # Total number of doctors
-    num_patients = 1000      # Total number of patients
-    doctor_capacity = 100    # Maximum patients per doctor
-    num_rounds = 250         # Total number of simulation rounds
+    num_doctors = 450         # Total number of doctors
+    num_patients = 300000      # Total number of patients
+    doctor_capacity = 667    # Maximum patients per doctor
+    num_rounds = 250        # Total number of simulation rounds
     time_hungarian = []
     time_ttc = []
     total_simulation_time = []
@@ -273,7 +287,7 @@ def main():
     preference_lists_initial = {pid: preferences_dict[pid] for pid in all_patients}
 
     for doctor_idx in range(num_doctors):
-        for patient_dix in range(num_patients):
+        for patient_idx in range(num_patients):
             matching_dict_initial[patient_idx] = patient_idx // doctor_capacity
 
     new_matches_initial = matching_dict_initial
@@ -318,7 +332,7 @@ def main():
         # Update preferences
         changed_patients = []
         for patient_idx in range(num_patients):
-            if np.random.rand() < 0.1:
+            if np.random.rand() < 0.01:
                 new_preferences = np.random.normal(0, 1, num_doctors).tolist()
                 preferences_dict[patient_idx] = new_preferences
                 changed_patients.append(patient_idx)
