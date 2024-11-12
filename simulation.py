@@ -257,15 +257,16 @@ def plot_execution_times(time_hungarian, time_ttc, num_rounds,total_simulation_t
     plt.show()
 
 def main():
-    num_doctors = 450        # Total number of doctors
-    num_patients = 300000      # Total number of patients
-    doctor_capacity = 667   # Maximum patients per doctor
-    num_rounds = 500        # Total number of simulation rounds
+    num_doctors = 100       # Total number of doctors
+    num_patients = 50000      # Total number of patients
+    doctor_capacity = 500   # Maximum patients per doctor
+    num_rounds = 10        # Total number of simulation rounds
     time_hungarian = []
     time_ttc = []
     total_simulation_time = []
+    patients_hungarian = []
+    patients_ttc = []
 
-    hungarian_0_time_start = time.time()
     # Initialize patient preferences
     initial_preferences_array = np.random.normal(0, 1, (num_patients, num_doctors))
     preferences_dict = {
@@ -281,8 +282,8 @@ def main():
     patient_history_ttc = {pid: [] for pid in range(num_patients)}
     patient_history_no_op = {pid: [] for pid in range(num_patients)}
 
-    # Initial round: use Hungarian algorithm for initial assignment
-    print("--- Round 0: Initial Assignment using Hungarian Algorithm ---")
+    # Initial round
+    print("--- Round 0: Initial Assignment ---")
     all_patients = list(range(num_patients))
     preference_lists_initial = {pid: preferences_dict[pid] for pid in all_patients}
 
@@ -319,10 +320,6 @@ def main():
     patient_need_match_ttc = set()
     patient_need_match_no_op = set()
 
-    hungarian_0_time_end = time.time()
-    hungarian_0_time = hungarian_0_time_end - hungarian_0_time_start
-    print(hungarian_0_time)
-
     # Start Running
     for round_num in range(1, num_rounds + 1):
         print(f"--- Round {round_num} ---")
@@ -349,6 +346,7 @@ def main():
             preference_lists_hungarian = {pid: preferences_dict[pid] for pid in patients_to_match_hungarian}
 
             start_time_hungarian = time.time()
+            patients_hungarian.append(len(patients_to_match_hungarian))
             new_matches_hungarian = hungarian_matching(
                     preference_lists_hungarian,
                     num_doctors,
@@ -382,12 +380,14 @@ def main():
         for pid in range(num_patients):
             patient_history_hungarian[pid].append(matching_dict_hungarian[pid])
 
+        # Group 2
         patients_to_match_ttc = list(patient_need_match_ttc)
         print(f"Number of patients needing TTC match before TTC: {len(patient_need_match_ttc)}")
         if patients_to_match_ttc:
 
             start_time_ttc = time.time()
 
+            # 备份旧的匹配字典
             old_matching_dict_ttc = matching_dict_ttc.copy()
 
             # Build current panels and waitlists
@@ -409,6 +409,9 @@ def main():
                         waitlists[highest_pref_doctor] = []
                     waitlists[highest_pref_doctor].append(pid)
 
+            patients_ttc.append(len(patients_to_match_ttc))
+
+
             current_panels, waitlists = run_ttc(current_panels, waitlists)
 
             # Update matching dictionary
@@ -417,6 +420,7 @@ def main():
                 for pid in patients:
                     matching_dict_ttc[pid] = doctor_idx
 
+            # Update matching dictionary
             new_matching_dict_ttc = matching_dict_ttc.copy()
 
             # find patients whose preferences have been changed
@@ -457,6 +461,8 @@ def main():
         total_end_time = time.time()
         total_simulation_time.append(total_end_time - total_start_time)
 
+    print(f"Average patients need to match for Hungarian : {sum(patients_hungarian)/len(patients_hungarian)}")
+    print(f"Average patients need to match for TTC : {sum(patients_ttc)/len(patients_ttc)}")
 
     # Plot utility graph
     plot_utilities(utility_hungarian, utility_ttc, utility_no_matching, num_rounds)
