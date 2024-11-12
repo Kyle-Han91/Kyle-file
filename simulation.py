@@ -257,10 +257,10 @@ def plot_execution_times(time_hungarian, time_ttc, num_rounds,total_simulation_t
     plt.show()
 
 def main():
-    num_doctors = 100       # Total number of doctors
-    num_patients = 50000      # Total number of patients
-    doctor_capacity = 500   # Maximum patients per doctor
-    num_rounds = 10        # Total number of simulation rounds
+    num_doctors = 10       # Total number of doctors
+    num_patients = 1000      # Total number of patients
+    doctor_capacity = 100  # Maximum patients per doctor
+    num_rounds = 250        # Total number of simulation rounds
     time_hungarian = []
     time_ttc = []
     total_simulation_time = []
