@@ -257,10 +257,10 @@ def plot_execution_times(time_hungarian, time_ttc, num_rounds,total_simulation_t
     plt.show()
 
 def main():
-    num_doctors = 450         # Total number of doctors
+    num_doctors = 450        # Total number of doctors
     num_patients = 300000      # Total number of patients
-    doctor_capacity = 667    # Maximum patients per doctor
-    num_rounds = 250        # Total number of simulation rounds
+    doctor_capacity = 667   # Maximum patients per doctor
+    num_rounds = 500        # Total number of simulation rounds
     time_hungarian = []
     time_ttc = []
     total_simulation_time = []
@@ -332,7 +332,7 @@ def main():
         # Update preferences
         changed_patients = []
         for patient_idx in range(num_patients):
-            if np.random.rand() < 0.01:
+            if np.random.rand() < 0.1:
                 new_preferences = np.random.normal(0, 1, num_doctors).tolist()
                 preferences_dict[patient_idx] = new_preferences
                 changed_patients.append(patient_idx)
@@ -382,11 +382,14 @@ def main():
         for pid in range(num_patients):
             patient_history_hungarian[pid].append(matching_dict_hungarian[pid])
 
-        # Group 2: TTC algorithm
         patients_to_match_ttc = list(patient_need_match_ttc)
+        print(f"Number of patients needing TTC match before TTC: {len(patient_need_match_ttc)}")
         if patients_to_match_ttc:
 
             start_time_ttc = time.time()
+
+            # 备份旧的匹配字典
+            old_matching_dict_ttc = matching_dict_ttc.copy()
 
             # Build current panels and waitlists
             current_panels = {}
@@ -414,8 +417,20 @@ def main():
             for doctor_idx, patients in current_panels.items():
                 for pid in patients:
                     matching_dict_ttc[pid] = doctor_idx
-            # Remove patients who have been matched to a new doctor from the needing matching set
-            patient_need_match_ttc -= set(patients_to_match_ttc)
+
+            # 备份新的匹配字典
+            new_matching_dict_ttc = matching_dict_ttc.copy()
+
+            # 找出匹配发生变化的患者
+            patients_matched = []
+            for pid in patients_to_match_ttc:
+                old_doc = old_matching_dict_ttc.get(pid, None)
+                new_doc = new_matching_dict_ttc.get(pid, None)
+                if new_doc != old_doc:
+                    patients_matched.append(pid)
+
+            # 移除已经匹配成功的患者
+            patient_need_match_ttc -= set(patients_matched)
 
             end_time_ttc = time.time()
             time_ttc.append(end_time_ttc - start_time_ttc)
@@ -430,6 +445,8 @@ def main():
         # Append current matching to patient history
         for pid in range(num_patients):
             patient_history_ttc[pid].append(matching_dict_ttc.get(pid, None))
+        print(f"Number of patients needing TTC match after TTC: {len(patient_need_match_ttc)}")
+
 
         # Group 3: No operation
         # Compute utility
