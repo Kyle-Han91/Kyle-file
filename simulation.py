@@ -388,7 +388,6 @@ def main():
 
             start_time_ttc = time.time()
 
-            # 备份旧的匹配字典
             old_matching_dict_ttc = matching_dict_ttc.copy()
 
             # Build current panels and waitlists
@@ -418,10 +417,9 @@ def main():
                 for pid in patients:
                     matching_dict_ttc[pid] = doctor_idx
 
-            # 备份新的匹配字典
             new_matching_dict_ttc = matching_dict_ttc.copy()
 
-            # 找出匹配发生变化的患者
+            # find patients whose preferences have been changed
             patients_matched = []
             for pid in patients_to_match_ttc:
                 old_doc = old_matching_dict_ttc.get(pid, None)
@@ -429,7 +427,7 @@ def main():
                 if new_doc != old_doc:
                     patients_matched.append(pid)
 
-            # 移除已经匹配成功的患者
+            # remove successfully matched patients
             patient_need_match_ttc -= set(patients_matched)
 
             end_time_ttc = time.time()
