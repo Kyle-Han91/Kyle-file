@@ -396,8 +396,7 @@ def main():
         if patients_to_match_ttc:
 
             start_time_ttc = time.time()
-
-            # 备份旧的匹配字典
+            
             old_matching_dict_ttc = matching_dict_ttc.copy()
 
             # Build current panels and waitlists
