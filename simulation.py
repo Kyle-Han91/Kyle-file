@@ -257,8 +257,8 @@ def plot_execution_times(time_hungarian, time_ttc, num_rounds,total_simulation_t
     plt.show()
 
 def main():
-    num_doctors = 10       # Total number of doctors
-    num_patients = 1000      # Total number of patients
+    num_doctors = 100       # Total number of doctors
+    num_patients = 10000      # Total number of patients
     doctor_capacity = 100  # Maximum patients per doctor
     num_rounds = 250        # Total number of simulation rounds
     time_hungarian = []
@@ -344,6 +344,16 @@ def main():
         patients_to_match_hungarian = list(patient_need_match_hungarian)
         if patients_to_match_hungarian:
             preference_lists_hungarian = {pid: preferences_dict[pid] for pid in patients_to_match_hungarian}
+
+            for pid in patients_to_match_hungarian:
+                current_doctor = matching_dict_hungarian.get(pid, None)
+                pref_list = preferences_dict[pid][:]
+                if current_doctor is not None:
+                    current_pref = pref_list[current_doctor]
+                    for doc_idx in range(len(pref_list)):
+                        if pref_list[doc_idx] < current_pref:
+                            pref_list[doc_idx] = -1e6
+                preference_lists_hungarian[pid] = pref_list
 
             start_time_hungarian = time.time()
             patients_hungarian.append(len(patients_to_match_hungarian))
