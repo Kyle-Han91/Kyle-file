@@ -175,8 +175,6 @@ def hungarian_matching(preference_lists, num_doctors, doctor_capacity, matching_
 
     # Filter doctors with available capacity
     available_doctors = [doctor for doctor, cap in residual_capacity.items() if cap > 0]
-    if not available_doctors:
-        raise Exception("No available doctors to assign.")
 
     # Expand doctors into available slots
     doctor_slots = []
@@ -184,24 +182,15 @@ def hungarian_matching(preference_lists, num_doctors, doctor_capacity, matching_
         for _ in range(residual_capacity[doctor]):
             doctor_slots.append(doctor)
     num_slots = len(doctor_slots)
-    if num_slots < num_patients_to_match:
-        raise Exception("Not enough available slots to assign all patients.")
 
     # Create cost matrix
     cost_matrix = np.full((num_patients_to_match, num_slots), fill_value=1e6)
 
-    def fill_cost_row(i, pid):
-        row_costs = np.full(num_slots, 1e6)
+    # Fill cost matrix in single-threaded manner
+    for i, pid in enumerate(patients_to_match):
         pref = preference_lists[pid]
         for j, doctor in enumerate(doctor_slots):
-            row_costs[j] = -pref[doctor]
-        return i, row_costs
-
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(fill_cost_row, i, pid) for i, pid in enumerate(patients_to_match)]
-        for future in futures:
-            i, row_costs = future.result()
-            cost_matrix[i] = row_costs
+            cost_matrix[i][j] = -pref[doctor]
 
     # Apply Hungarian algorithm
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
@@ -257,10 +246,10 @@ def plot_execution_times(time_hungarian, time_ttc, num_rounds,total_simulation_t
     plt.show()
 
 def main():
-    num_doctors = 100       # Total number of doctors
-    num_patients = 10000      # Total number of patients
-    doctor_capacity = 100  # Maximum patients per doctor
-    num_rounds = 250        # Total number of simulation rounds
+    num_doctors = 450       # Total number of doctors
+    num_patients = 300000     # Total number of patients
+    doctor_capacity = 667  # Maximum patients per doctor
+    num_rounds = 100        # Total number of simulation rounds
     time_hungarian = []
     time_ttc = []
     total_simulation_time = []
@@ -396,7 +385,8 @@ def main():
         if patients_to_match_ttc:
 
             start_time_ttc = time.time()
-            
+
+            # 备份旧的匹配字典
             old_matching_dict_ttc = matching_dict_ttc.copy()
 
             # Build current panels and waitlists
@@ -495,7 +485,6 @@ def get_patient_matching_history(patient_id, algorithm, patient_history):
 
     history = patient_history[patient_id]
     return history
-
 
 # Run the simulation and get patient histories
 patient_history_hungarian, patient_history_ttc, patient_history_no_op = main()
