@@ -246,15 +246,22 @@ def plot_execution_times(time_hungarian, time_ttc, num_rounds,total_simulation_t
     plt.show()
 
 def main():
-    num_doctors = 450       # Total number of doctors
-    num_patients = 300000     # Total number of patients
-    doctor_capacity = 667  # Maximum patients per doctor
+    num_doctors = 200       # Total number of doctors
+    num_patients = 60000     # Total number of patients
+    doctor_capacity = 300  # Maximum patients per doctor
     num_rounds = 100        # Total number of simulation rounds
     time_hungarian = []
     time_ttc = []
     total_simulation_time = []
     patients_hungarian = []
     patients_ttc = []
+
+
+    user_input = input("Do you want Pareto efficiency (Hungarian)? (a for Yes, b for No): ").strip().lower()
+    if user_input == 'a':
+        adjust_preferences = True
+    elif user_input == 'b':
+        adjust_preferences = False
 
     # Initialize patient preferences
     initial_preferences_array = np.random.normal(0, 1, (num_patients, num_doctors))
@@ -335,14 +342,16 @@ def main():
             preference_lists_hungarian = {pid: preferences_dict[pid] for pid in patients_to_match_hungarian}
 
             for pid in patients_to_match_hungarian:
-                current_doctor = matching_dict_hungarian.get(pid, None)
                 pref_list = preferences_dict[pid][:]
-                if current_doctor is not None:
-                    current_pref = pref_list[current_doctor]
-                    for doc_idx in range(len(pref_list)):
-                        if pref_list[doc_idx] < current_pref:
-                            pref_list[doc_idx] = -1e6
+                if adjust_preferences:
+                    current_doctor = matching_dict_hungarian.get(pid, None)
+                    if current_doctor is not None:
+                        current_pref = pref_list[current_doctor]
+                        for doc_idx in range(len(pref_list)):
+                            if pref_list[doc_idx] < current_pref:
+                                pref_list[doc_idx] = -1e6  
                 preference_lists_hungarian[pid] = pref_list
+
 
             start_time_hungarian = time.time()
             patients_hungarian.append(len(patients_to_match_hungarian))
