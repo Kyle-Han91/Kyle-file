@@ -83,7 +83,6 @@ def run_ttc(current_panels, waitlists):
 
     print('{:,} people from {:,} doctors participating in TTC...'.format(total_ttc_patients, len(current_panels_TTC)))
 
-    # Proceed with the rest of the TTC algorithm as before
     # Set up preference lists
     patients = set().union(*current_panels_TTC.values())
     avtales = set(current_panels_TTC.keys())
