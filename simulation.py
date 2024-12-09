@@ -3,7 +3,8 @@ from scipy.optimize import linear_sum_assignment
 import copy
 import matplotlib.pyplot as plt
 import time
-from concurrent.futures import ThreadPoolExecutor
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 np.random.seed(1)
 
@@ -216,52 +217,70 @@ def compute_total_utility(preferences_dict, matching_dict):
     return total_utility
 
 
-# Plot utility function
-def plot_utilities(utility_hungarian, utility_ttc, utility_no_matching, num_rounds):
-    rounds = range(0, num_rounds + 1)
-    plt.figure(figsize=(12, 6))
-    plt.plot(rounds, utility_hungarian, label='Hungarian Algorithm', color='blue')
-    plt.plot(rounds, utility_ttc, label='TTC Algorithm', color='red')
-    plt.plot(rounds, utility_no_matching, label='No Matching', color='green', linestyle='--')
-    plt.xlabel('Round Number')
+# Function to plot utilities
+def plot_utilities(utilities_dict, num_rounds, selected_algorithms):
+    plt.figure(figsize=(12, 7))
+    for algo in selected_algorithms:
+        plt.plot(range(len(utilities_dict[algo])), utilities_dict[algo], label=algo.replace('_', ' ').title())
+    plt.xlabel('Rounds')
     plt.ylabel('Total Utility')
-    plt.title('Total Utility Over Rounds for Hungarian, TTC Algorithms, and No Matching')
+    plt.title('Total Utility over Rounds')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
     plt.show()
 
-def plot_execution_times(time_hungarian, time_ttc, num_rounds,total_simulation_time):
-    rounds = range(1, num_rounds + 1)
-    plt.figure(figsize=(12, 6))
-    plt.plot(rounds, time_hungarian, label='Hungarian Algorithm', color='blue')
-    plt.plot(rounds, time_ttc, label='TTC Algorithm', color='red')
-    plt.plot(rounds, total_simulation_time, label='Total', color='green')
-    plt.xlabel('Round Number')
-    plt.ylabel('Execution Time (seconds)')
-    plt.title('Execution Time per Round')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
 
+# Plot utility function
 def main():
-    num_doctors = 200       # Total number of doctors
-    num_patients = 60000     # Total number of patients
-    doctor_capacity = 300  # Maximum patients per doctor
-    num_rounds = 100        # Total number of simulation rounds
-    time_hungarian = []
-    time_ttc = []
-    total_simulation_time = []
-    patients_hungarian = []
-    patients_ttc = []
+    # Define available algorithms
+    available_algorithms = ['pareto_hungarian', 'non_pareto_hungarian', 'ttc']
 
+    # Initialize list to store selected algorithms
+    selected_algorithms = []
 
-    user_input = input("Do you want Pareto efficiency (Hungarian)? (a for Yes, b for No): ").strip().lower()
-    if user_input == 'a':
+    # Prompt user to select algorithms
+    print("Select the algorithms you want to include in the simulation:")
+    for algo in available_algorithms:
+        while True:
+            user_input = input(f"Do you want to include {algo.replace('_', ' ').title()}? (a for Yes, b for No): ").strip().lower()
+            if user_input == 'a':
+                selected_algorithms.append(algo)
+                break
+            elif user_input == 'b':
+                break
+            else:
+                print("Invalid input. Please enter 'a' for Yes or 'b' for No.")
+
+    if not selected_algorithms:
+        print("No algorithms selected. Exiting the simulation.")
+        sys.exit()
+
+    # Initialize simulation parameters
+    num_doctors = 450      # Total number of doctors
+    num_patients = 300000    # Total number of patients
+    doctor_capacity = 667   # Maximum patients per doctor
+    num_rounds = 250        # Total number of simulation rounds
+
+    # Initialize dictionaries to store algorithm-specific data
+    patients_to_match = {algo: [] for algo in selected_algorithms}
+
+    # Initialize patient matching histories for selected algorithms
+    patient_history = {
+        algo: {pid: [] for pid in range(num_patients)}
+        for algo in selected_algorithms
+    }
+
+    # Initialize utility lists for selected algorithms
+    utility = {algo: [] for algo in selected_algorithms}
+
+    # Initialize sets of patients needing matching for selected algorithms
+    patient_need_match = {algo: set() for algo in selected_algorithms}
+
+    # Determine if Pareto adjustments are needed for Hungarian algorithms
+    adjust_preferences = False
+    if 'pareto_hungarian' in selected_algorithms:
         adjust_preferences = True
-    elif user_input == 'b':
-        adjust_preferences = False
 
     # Initialize patient preferences
     initial_preferences_array = np.random.normal(0, 1, (num_patients, num_doctors))
@@ -270,243 +289,216 @@ def main():
         for patient_idx in range(num_patients)
     }
 
-    # Initialize matching dictionaries
-    matching_dict_initial = {pid: None for pid in range(num_patients)}
+    # Initialize matching dictionaries for selected algorithms
+    matching_dict = {}
+    for algo in selected_algorithms:
+        matching_dict[algo] = {pid: None for pid in range(num_patients)}
 
-    # Initialize patient matching history dictionaries
-    patient_history_hungarian = {pid: [] for pid in range(num_patients)}
-    patient_history_ttc = {pid: [] for pid in range(num_patients)}
-    patient_history_no_op = {pid: [] for pid in range(num_patients)}
-
-    # Initial round
-    print("--- Round 0: Initial Assignment ---")
+    # Initial round: Assign patients to doctors in a round-robin fashion
+    print("\n--- Round 0: Initial Assignment ---")
     all_patients = list(range(num_patients))
-    preference_lists_initial = {pid: preferences_dict[pid] for pid in all_patients}
-
-    for doctor_idx in range(num_doctors):
-        for patient_idx in range(num_patients):
-            matching_dict_initial[patient_idx] = patient_idx // doctor_capacity
-
-    new_matches_initial = matching_dict_initial
-
-    # Update matching dictionary with new matches
-    matching_dict_initial.update(new_matches_initial)
-
-    # Record initial utility
-    initial_utility = compute_total_utility(preferences_dict, matching_dict_initial)
-
-    # Copy three matching dictionaries
-    matching_dict_hungarian = matching_dict_initial.copy()
-    matching_dict_ttc = matching_dict_initial.copy()
-    matching_dict_no_op = matching_dict_initial.copy()
-
-    # Append initial matching to patient histories
-    for pid in range(num_patients):
-        patient_history_hungarian[pid].append(matching_dict_hungarian[pid])
-        patient_history_ttc[pid].append(matching_dict_ttc[pid])
-        patient_history_no_op[pid].append(matching_dict_no_op[pid])
-
-    # Initialize utility lists
-    utility_hungarian = [initial_utility]
-    utility_ttc = [initial_utility]
-    utility_no_matching = [initial_utility]
-
-    # Initialize sets of patients needing matching
-    patient_need_match_hungarian = set()
-    patient_need_match_ttc = set()
-    patient_need_match_no_op = set()
-
-    # Start Running
-    for round_num in range(1, num_rounds + 1):
-        print(f"--- Round {round_num} ---")
-
-        total_start_time = time.time()
-
-        # Update preferences
-        changed_patients = []
-        for patient_idx in range(num_patients):
-            if np.random.rand() < 0.1:
-                new_preferences = np.random.normal(0, 1, num_doctors).tolist()
-                preferences_dict[patient_idx] = new_preferences
-                changed_patients.append(patient_idx)
-
-        # Add patients who changed preferences to the set needing matching
-        for pid in changed_patients:
-            patient_need_match_hungarian.add(pid)
-            patient_need_match_ttc.add(pid)
-            patient_need_match_no_op.add(pid)
-
-        # Group 1: Hungarian algorithm
-        patients_to_match_hungarian = list(patient_need_match_hungarian)
-        if patients_to_match_hungarian:
-            preference_lists_hungarian = {pid: preferences_dict[pid] for pid in patients_to_match_hungarian}
-
-            for pid in patients_to_match_hungarian:
-                pref_list = preferences_dict[pid][:]
-                if adjust_preferences:
-                    current_doctor = matching_dict_hungarian.get(pid, None)
-                    if current_doctor is not None:
-                        current_pref = pref_list[current_doctor]
-                        for doc_idx in range(len(pref_list)):
-                            if pref_list[doc_idx] < current_pref:
-                                pref_list[doc_idx] = -1e6  
-                preference_lists_hungarian[pid] = pref_list
-
-
-            start_time_hungarian = time.time()
-            patients_hungarian.append(len(patients_to_match_hungarian))
-            new_matches_hungarian = hungarian_matching(
-                    preference_lists_hungarian,
-                    num_doctors,
-                    doctor_capacity,
-                    matching_dict_hungarian,
-                    patients_to_match_hungarian
-            )
-            end_time_hungarian = time.time()
-            time_hungarian.append(end_time_hungarian - start_time_hungarian)
-
-
-            # Update matching dictionary
-            matching_dict_hungarian.update(new_matches_hungarian)
-
-            # Check which patients' matches have changed
-            patients_matched = []
-            for pid in patients_to_match_hungarian:
-                if new_matches_hungarian[pid] != matching_dict_initial[pid]:
-                    patients_matched.append(pid)
-            # Remove patients who have been matched to a new doctor
-            patient_need_match_hungarian -= set(patients_matched)
-
-            # Compute utility
-            utility_h = compute_total_utility(preferences_dict, matching_dict_hungarian)
-            utility_hungarian.append(utility_h)
-        else:
-            # If no patients need matching, utility remains the same
-            utility_hungarian.append(utility_hungarian[-1])
-
-        # Append current matching to patient history
+    initial_matches = {pid: pid // doctor_capacity for pid in all_patients}
+    for algo in selected_algorithms:
+        matching_dict[algo] = initial_matches.copy()
+        # Initialize patient histories
         for pid in range(num_patients):
-            patient_history_hungarian[pid].append(matching_dict_hungarian[pid])
+            patient_history[algo][pid].append(matching_dict[algo][pid])
+        # Compute initial utility
+        initial_utility = compute_total_utility(preferences_dict, matching_dict[algo])
+        utility[algo].append(initial_utility)
 
-        # Group 2
-        patients_to_match_ttc = list(patient_need_match_ttc)
-        print(f"Number of patients needing TTC match before TTC: {len(patient_need_match_ttc)}")
-        if patients_to_match_ttc:
+    # Create a thread pool with as many workers as selected algorithms
+    with ThreadPoolExecutor(max_workers=len(selected_algorithms)) as executor:
+        # Start simulation rounds
+        for round_num in range(1, num_rounds + 1):
+            print(f"\n--- Round {round_num} ---")
 
-            start_time_ttc = time.time()
+            round_start_time = time.time()
 
-            # 备份旧的匹配字典
-            old_matching_dict_ttc = matching_dict_ttc.copy()
+            # Update preferences: Each patient has a 10% chance to change preferences
+            changed_patients = []
+            for patient_idx in range(num_patients):
+                if np.random.rand() < 0.1:
+                    new_preferences = np.random.normal(0, 1, num_doctors).tolist()
+                    preferences_dict[patient_idx] = new_preferences
+                    changed_patients.append(patient_idx)
 
-            # Build current panels and waitlists
-            current_panels = {}
-            waitlists = {}
-            for doctor_idx in range(num_doctors):
-                current_panels[doctor_idx] = set()
-            for patient_idx, doctor_idx in matching_dict_ttc.items():
-                if doctor_idx is not None:
-                    current_panels[doctor_idx].add(patient_idx)
+            # Add patients who changed preferences to the set needing matching
+            for algo in selected_algorithms:
+                patient_need_match[algo].update(changed_patients)
 
-            # Waitlists are patients needing matching
-            for pid in patients_to_match_ttc:
-                current_doctor = matching_dict_ttc[pid]
-                # Patients want to match to their highest preference doctor
-                highest_pref_doctor = np.argmax(preferences_dict[pid])
-                if highest_pref_doctor != current_doctor:
-                    if highest_pref_doctor not in waitlists:
-                        waitlists[highest_pref_doctor] = []
-                    waitlists[highest_pref_doctor].append(pid)
+            # Define a worker function for processing each algorithm
+            def process_algorithm(algo):
+                print(f"Processing algorithm: {algo.replace('_', ' ').title()}")
+                start_time = time.time()
+                patients_current = list(patient_need_match[algo])
+                patients_to_match[algo].append(len(patients_current))
 
-            patients_ttc.append(len(patients_to_match_ttc))
+                if algo in ['pareto_hungarian', 'non_pareto_hungarian']:
+                    # Hungarian Algorithm
+                    if patients_current:
+                        preference_lists = {pid: preferences_dict[pid] for pid in patients_current}
 
+                        if algo == 'pareto_hungarian':
+                            # Adjust preferences for Pareto efficiency
+                            for pid in patients_current:
+                                pref_list = preference_lists[pid][:]
+                                current_doctor = matching_dict[algo].get(pid, None)
+                                if current_doctor is not None:
+                                    current_pref = pref_list[current_doctor]
+                                    for doc_idx in range(len(pref_list)):
+                                        if pref_list[doc_idx] < current_pref:
+                                            pref_list[doc_idx] = -1e6  # Penalize less preferred doctors
+                                preference_lists[pid] = pref_list
 
-            current_panels, waitlists = run_ttc(current_panels, waitlists)
+                        # Perform Hungarian Matching
+                        new_matches = hungarian_matching(
+                            preference_lists,
+                            num_doctors,
+                            doctor_capacity,
+                            matching_dict[algo],
+                            patients_current
+                        )
 
-            # Update matching dictionary
-            matching_dict_ttc = {}
-            for doctor_idx, patients in current_panels.items():
-                for pid in patients:
-                    matching_dict_ttc[pid] = doctor_idx
+                        # Update matching dictionary
+                        matching_dict[algo].update(new_matches)
 
-            # Update matching dictionary
-            new_matching_dict_ttc = matching_dict_ttc.copy()
+                        # Determine which patients have been successfully matched to a new doctor
+                        patients_matched = [
+                            pid for pid in patients_current
+                            if new_matches.get(pid) != initial_matches.get(pid)
+                        ]
 
-            # find patients whose preferences have been changed
-            patients_matched = []
-            for pid in patients_to_match_ttc:
-                old_doc = old_matching_dict_ttc.get(pid, None)
-                new_doc = new_matching_dict_ttc.get(pid, None)
-                if new_doc != old_doc:
-                    patients_matched.append(pid)
+                        # Remove matched patients from needing matching
+                        patient_need_match[algo] -= set(patients_matched)
 
-            # remove successfully matched patients
-            patient_need_match_ttc -= set(patients_matched)
+                        # Compute utility
+                        current_utility = compute_total_utility(preferences_dict, matching_dict[algo])
+                        utility[algo].append(current_utility)
+                    else:
+                        # If no patients need matching, utility remains the same
+                        utility[algo].append(utility[algo][-1])
 
-            end_time_ttc = time.time()
-            time_ttc.append(end_time_ttc - start_time_ttc)
+                    # Append current matching to patient history
+                    for pid in range(num_patients):
+                        patient_history[algo][pid].append(matching_dict[algo][pid])
 
-            # Compute utility
-            utility_t = compute_total_utility(preferences_dict, matching_dict_ttc)
-            utility_ttc.append(utility_t)
-        else:
-            # If no patients need matching, utility remains the same
-            utility_ttc.append(utility_ttc[-1])
+                elif algo == 'ttc':
+                    # TTC Algorithm
+                    print(f"Number of patients needing TTC match before TTC: {len(patient_need_match[algo])}")
+                    if patients_current:
+                        # Backup old matching dictionary
+                        old_matching = matching_dict[algo].copy()
 
-        # Append current matching to patient history
-        for pid in range(num_patients):
-            patient_history_ttc[pid].append(matching_dict_ttc.get(pid, None))
-        print(f"Number of patients needing TTC match after TTC: {len(patient_need_match_ttc)}")
+                        # Build current panels and waitlists
+                        current_panels = {doctor_idx: set() for doctor_idx in range(num_doctors)}
+                        for patient_idx, doctor_idx in matching_dict[algo].items():
+                            if doctor_idx is not None:
+                                current_panels[doctor_idx].add(patient_idx)
 
+                        waitlists = {}
+                        for pid in patients_current:
+                            highest_pref_doctor = np.argmax(preferences_dict[pid])
+                            current_doctor = matching_dict[algo].get(pid, None)
+                            if highest_pref_doctor != current_doctor:
+                                if highest_pref_doctor not in waitlists:
+                                    waitlists[highest_pref_doctor] = []
+                                waitlists[highest_pref_doctor].append(pid)
 
-        # Group 3: No operation
-        # Compute utility
-        utility_n = compute_total_utility(preferences_dict, matching_dict_no_op)
-        utility_no_matching.append(utility_n)
+                        # Perform TTC matching
+                        updated_panels, updated_waitlists = run_ttc(current_panels, waitlists)
 
-        # Append current matching to patient history
-        for pid in range(num_patients):
-            patient_history_no_op[pid].append(matching_dict_no_op[pid])
-        total_end_time = time.time()
-        total_simulation_time.append(total_end_time - total_start_time)
+                        # Update matching dictionary based on updated panels
+                        new_matching = {}
+                        for doctor_idx, patients in updated_panels.items():
+                            for pid in patients:
+                                new_matching[pid] = doctor_idx
 
-    print(f"Average patients need to match for Hungarian : {sum(patients_hungarian)/len(patients_hungarian)}")
-    print(f"Average patients need to match for TTC : {sum(patients_ttc)/len(patients_ttc)}")
+                        matching_dict[algo] = new_matching
+
+                        # Determine which patients have been successfully matched to a new doctor
+                        patients_matched = [
+                            pid for pid in patients_current
+                            if new_matching.get(pid) != old_matching.get(pid)
+                        ]
+
+                        # Remove matched patients from needing matching
+                        patient_need_match[algo] -= set(patients_matched)
+
+                        # Compute utility
+                        current_utility = compute_total_utility(preferences_dict, matching_dict[algo])
+                        utility[algo].append(current_utility)
+                    else:
+                        # If no patients need matching, utility remains the same
+                        utility[algo].append(utility[algo][-1])
+
+                    # Append current matching to patient history
+                    for pid in range(num_patients):
+                        patient_history[algo][pid].append(matching_dict[algo].get(pid, None))
+
+                    print(f"Number of patients needing TTC match after TTC: {len(patient_need_match[algo])}")
+
+                end_time = time.time()
+
+            # Submit each algorithm to the thread pool
+            futures = {executor.submit(process_algorithm, algo): algo for algo in selected_algorithms}
+
+            # Wait for all threads to complete
+            for future in as_completed(futures):
+                algo = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    print(f'Algorithm {algo} generated an exception: {exc}')
+
+            round_end_time = time.time()
+            # You can track total simulation time per round here if needed
+            # total_simulation_time.append(round_end_time - round_start_time)
+
+    # After simulation rounds, report average patients needing matching
+    print("\n--- Simulation Results ---")
+    for algo in selected_algorithms:
+        avg_patients = sum(patients_to_match[algo]) / len(patients_to_match[algo]) if patients_to_match[algo] else 0
+        print(f"Average patients needing match for {algo.replace('_', ' ').title()}: {avg_patients:.2f}")
 
     # Plot utility graph
-    plot_utilities(utility_hungarian, utility_ttc, utility_no_matching, num_rounds)
-    # Plot execution time graph
-    plot_execution_times(time_hungarian, time_ttc, num_rounds,total_simulation_time)
+    plot_utilities(
+        utility,                # utilities_dict: dictionary containing utilities for each algorithm
+        num_rounds,             # num_rounds: total number of simulation rounds
+        selected_algorithms     # selected_algorithms: list of algorithms included in the simulation
+    )
 
-    print("Simulation completed.")
-    average_time_hungarian = sum(time_hungarian)/len(time_hungarian)
-    print("The average running time for Hungarian Algorithm is:",average_time_hungarian)
-    average_time_TTC = sum(time_ttc) / len(time_ttc)
-    print("The average running time for TTC Algorithm is:",average_time_TTC)
-    average_time_all = sum(total_simulation_time) / len(total_simulation_time)
-    print("The average running time for all Algorithm is:",average_time_all)
-    return patient_history_hungarian, patient_history_ttc, patient_history_no_op
+    print("\nSimulation completed.")
 
+    # Return patient histories for selected algorithms
+    return patient_history
 
 # Function to track a patient's matching history
 def get_patient_matching_history(patient_id, algorithm, patient_history):
-    if patient_id not in patient_history:
-        raise ValueError(f"Patient ID {patient_id} not found in patient history.")
-
-    history = patient_history[patient_id]
+    if algorithm not in patient_history:
+        raise ValueError(f"Algorithm '{algorithm}' not found in patient history.")
+    if patient_id not in patient_history[algorithm]:
+        raise ValueError(f"Patient ID {patient_id} not found in patient history for algorithm '{algorithm}'.")
+    history = patient_history[algorithm][patient_id]
     return history
 
-# Run the simulation and get patient histories
-patient_history_hungarian, patient_history_ttc, patient_history_no_op = main()
+patient_history = main()
 
-patient_id = 0    #This is where to change the searching patients.
-print(f"\nMatching history for patient {patient_id} using Hungarian Algorithm:")
-hungarian_history = get_patient_matching_history(patient_id, 'hungarian', patient_history_hungarian)
-print(hungarian_history)
+'''
+# Prompt user to input a patient ID for history retrieval
+try:
+    patient_id = int(input("\nEnter the Patient ID to view matching history (0 to 299999): ").strip())
+    if not (0 <= patient_id < 300000):
+        raise ValueError("Patient ID must be between 0 and 9999.")
+except ValueError as ve:
+    print(f"Invalid input: {ve}")
+    sys.exit()
 
-print(f"\nMatching history for patient {patient_id} using TTC Algorithm:")
-ttc_history = get_patient_matching_history(patient_id, 'ttc', patient_history_ttc)
-print(ttc_history)
 
-print(f"\nMatching history for patient {patient_id} with No Operation:")
-no_op_history = get_patient_matching_history(patient_id, 'no_op', patient_history_no_op)
-print(no_op_history)
+# Retrieve and print matching history for the selected patient across all selected algorithms
+print("\n--- Patient Matching History ---")
+for algo in patient_history:
+    print(f"\nMatching history for patient {patient_id} using {algo.replace('_', ' ').title()} Algorithm:")
+    history = get_patient_matching_history(patient_id, algo, patient_history)
+    print(history)
+'''
