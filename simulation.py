@@ -250,10 +250,10 @@ def main():
         print("No algorithms selected. Exiting the simulation.")
         sys.exit()
 
-    num_doctors = 450
-    num_patients = 300000 
-    doctor_capacity = 667  
-    num_rounds = 100        
+    num_doctors = int(input("number of doctors: "))
+    num_patients = int(input("number of patients: "))
+    doctor_capacity = int(input("capacity of doctors: "))
+    num_rounds = 250
 
     patients_to_match = {algo: [] for algo in selected_algorithms}
 
@@ -304,7 +304,7 @@ def main():
             # Update preferences
             changed_patients = []
             for patient_idx in range(num_patients):
-                if np.random.rand() < 0.1:
+                if np.random.rand() < 0.02:
                     new_preferences = np.random.normal(0, 1, num_doctors).tolist()
                     preferences_dict[patient_idx] = new_preferences
                     changed_patients.append(patient_idx)
